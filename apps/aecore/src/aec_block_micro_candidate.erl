@@ -35,11 +35,26 @@ create(BlockHash) when is_binary(BlockHash) ->
         _ -> {error, block_not_found}
     end;
 create(Block) ->
+    T0 = erlang:system_time(millisecond),
     case aec_blocks:is_key_block(Block) of
-        true -> int_create(Block, Block);
+        true ->
+            Res = int_create(Block, Block),
+            MB = element(2, Res),
+            lager:info("building micro block at height ~p took ~p ms for ~p txs", 
+                       [aec_blocks:height(MB),
+                        erlang:system_time(millisecond) - T0, 
+                        length(aec_blocks:txs(MB))]), 
+            Res;
         false ->
             case aec_chain:get_block(aec_blocks:prev_key_hash(Block)) of
-                {ok, KeyBlock} -> int_create(Block, KeyBlock);
+                {ok, KeyBlock} -> 
+                    Res = int_create(Block, KeyBlock),
+                    MB = element(2, Res),
+                    lager:info("building micro block at height ~p took ~p ms for ~p txs", 
+                               [aec_blocks:height(MB),
+                                erlang:system_time(millisecond) - T0,
+                                length(aec_blocks:txs(MB))]), 
+                    Res;
                 _ -> {error, block_not_found}
             end
     end.
@@ -99,7 +114,11 @@ int_create(Block, KeyBlock) ->
 int_create(BlockHash, Block, KeyBlock, Trees) ->
     MaxGas = aec_governance:block_gas_limit(),
     {ok, Txs} = aec_tx_pool:get_candidate(MaxGas, BlockHash),
-    int_create_block(BlockHash, Block, KeyBlock, Trees, Txs).
+    T0 = erlang:system_time(millisecond),
+    Res = int_create_block(BlockHash, Block, KeyBlock, Trees, Txs),
+    lager:info("internal building micro block took ~p ms", 
+                       [erlang:system_time(millisecond) - T0]), 
+    Res.
 
 int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
     PrevBlockHeight = aec_blocks:height(PrevBlock),

@@ -213,7 +213,10 @@ reinit_chain_state() ->
     ok.
 
 handle_call({add_synced_generation, Block},_From, State) ->
+    T0 = erlang:system_time(millisecond),
     {Reply, State1} = handle_synced_generation(Block, State),
+    lager:info("sync generation at height ~p took ~p ms", [aec_blocks:height(maps:get(key_block,Block)) - 1, %% called backward 
+                                                           erlang:system_time(millisecond) - T0]), 
     {reply, Reply, State1};
 handle_call(get_key_block_candidate,_From, State) ->
     Res =
