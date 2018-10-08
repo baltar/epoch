@@ -1,0 +1,16 @@
+
+contract SpendContract =
+
+  function spend(amount) =
+    let total = Contract.balance
+    spend_loop(20, amount)
+
+  function spend_loop(n, amount) =
+    if (n==0)
+       0
+    else
+       Chain.spend(Call.caller, amount)
+       spend_loop(n-1, amount)
+
+  function idle() =
+    1

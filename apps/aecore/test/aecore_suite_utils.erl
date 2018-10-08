@@ -309,7 +309,7 @@ wait_for_new_block() ->
             ct:log("micro block created, Info=~p", [Info]),
             #{info := Block} = Info,
             {ok, Block}
-    after 30000 ->
+    after 600000 ->
             ct:log("timeout waiting for block event~n"
                   "~p", [process_info(self(), messages)]),
             {error, timeout_waiting_for_block}
