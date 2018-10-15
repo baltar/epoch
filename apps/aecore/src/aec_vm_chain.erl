@@ -711,13 +711,17 @@ do_set_store(Store, PubKey, Trees) ->
     aect_state_tree:enter_contract(NewContract, ContractsTree).
 
 apply_transaction(Tx, #state{tx_env = Env } = State) ->
+    T0 = erlang:system_time(microsecond),
     Trees = get_top_trees(State),
     case aetx:check(Tx, Trees, Env) of
         {ok, Trees1} ->
             {ok, Trees2} = aetx:process(Tx, Trees1, Env),
             State1 = set_top_trees(State, Trees2),
+            lager:debug("Micro seconds transaction = ~p", [ erlang:system_time(microsecond) - T0]),
             {ok, State1};
-        {error, _} = E -> E
+        {error, _} = E -> 
+            lager:debug("Micro seconds error transaction = ~p", [ erlang:system_time(microsecond) - T0]),
+            E
     end.
 
 next_nonce(State = #state{ account = ContractKey }) ->
