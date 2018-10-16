@@ -415,11 +415,13 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, St
     case aetx_sign:verify(SignedTx, Trees) of
         ok ->
             Tx = aetx_sign:tx(SignedTx),
+            T0 = erlang:system_time(microsecond),
             case aetx:check(Tx, Trees, Env) of
                 {ok, Trees1} ->
                     Env1 = aetx_env:set_signed_tx(Env, {value, SignedTx}),
                     {ok, Trees2} = aetx:process(Tx, Trees1, Env1),
                     Valid1 = [SignedTx | ValidTxs],
+                    lager:debug("On Chain Micro seconds ~p", [ erlang:system_time(microsecond) - T0]),
                     apply_txs_on_state_trees(Rest, Valid1, InvalidTxs, Trees2, Env, Strict);
                 {error, Reason} when Strict ->
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
