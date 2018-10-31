@@ -29,16 +29,7 @@
 -export([tx_hash_to_contract_pubkey/1]).
 -endif.
 
--ifdef(COMMON_TEST).
--define(TEST_LOG(Format, Data),
-        try ct:log(Format, Data)
-        catch
-            %% Enable setting up node with "test" rebar profile.
-            error:undef -> ok
-        end).
--else.
 -define(TEST_LOG(Format, Data), ok).
--endif.
 
 %%%===================================================================
 %%% API

@@ -22,16 +22,7 @@
 
 -record(chain, {api, state}).
 
--ifdef(COMMON_TEST).
--define(TEST_LOG(Format, Data),
-        try ct:log(Format, Data)
-        catch
-            %% Enable setting up node with "test" rebar profile.
-            error:undef -> ok
-        end).
--else.
 -define(TEST_LOG(Format, Data), ok).
--endif.
 
 -spec call(Gas::non_neg_integer(), Value::non_neg_integer(), Data::binary(), StateIn) ->
                   {ok, ReturnValue, GasSpent::non_neg_integer(), StateOut} |
