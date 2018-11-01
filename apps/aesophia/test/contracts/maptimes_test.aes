@@ -1,0 +1,14 @@
+
+contract MapTimes =
+
+  record state = { map : map(int, int) }
+
+  public stateful function put_loop(n : int) =
+    if (n==0)
+       ()
+    else
+       state.map{ [n] = n }
+       put_loop(n-1)
+
+  function init() =
+      { map = {} }
