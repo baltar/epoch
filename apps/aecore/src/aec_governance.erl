@@ -25,7 +25,8 @@
          state_gas_per_block/1,
          primop_base_gas/1,
          add_network_id/1,
-         get_network_id/0]).
+         get_network_id/0,
+         vm_gas_table/0]).
 
 -export_type([protocols/0]).
 
@@ -58,7 +59,7 @@
 
 -define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, (?EXPECTED_BLOCK_MINE_RATE_MINUTES * 3 * 60 * 1000)). %% 9 min
 
--define(ORACLE_STATE_GAS_PER_YEAR, 32000). %% 32000 as `?GCREATE` in `aevm_gas.hrl` i.e. an oracle-related state object costs per year as much as it costs to indefinitely create an account.
+-define(ORACLE_STATE_GAS_PER_YEAR, 32000). %% 32000 as `GCREATE` i.e. an oracle-related state object costs per year as much as it costs to indefinitely create an account.
 
 %% Maps consensus protocol version to minimum height at which such
 %% version is effective.  The height must be strictly increasing with
@@ -219,3 +220,131 @@ add_network_id(SerializedTransaction) ->
 get_network_id() ->
     aeu_env:user_config_or_env([<<"fork_management">>, <<"network_id">>],
                                 aecore, network_id, ?NETWORK_ID).
+
+vm_gas_table() ->
+    #{ %% From the yellow paper
+
+       %% Nothing paid for operations of the set Wzero.
+       'GZERO' => 0
+
+       %% Amount of gas to pay for operations of the set Wbase.
+     , 'GBASE' => 2
+
+       %% Amount of gas to pay for operations of the set Wverylow.
+     , 'GVERYLOW' => 3
+
+       %% Amount of gas to pay for operations of the set Wlow.
+     , 'GLOW' => 5
+
+       %% Amount of gas to pay for operations of the set Wmid.
+     , 'GMID' => 8
+
+       %% Amount of gas to pay for operations of the set Whigh.
+     , 'GHIGH' => 10
+
+       %% Amount of gas to pay for operations of the set Wextcode.
+     , 'GEXTCODE' => 700
+
+       %% Amount of gas to pay for operations of the set Wextcodesize.
+     , 'GEXTCODESIZE' => 20 %% From go implementation
+
+       %% Amount of gas to pay for operations of the set Wextcodecopy.
+     , 'GEXTCODECOPY' => 20 %% From go implementation
+
+       %% Amount of gas to pay for a BALANCE operation.
+     , 'GBALANCE' => 20 %% From the go implementation. 400 in yellowpages
+
+       %% Paid for a SLOAD operation.
+     , 'GSLOAD' => 50 %% From the go implementation. 200 in yellowpaper
+
+       %% Paid for a JUMPDEST operation.
+     , 'GJUMPDEST' => 1
+
+       %% Paid for an SSTORE operation when the storage value is set to
+       %% non-zero from zero.
+     , 'GSSET' => 20000
+
+       %% Paid for an SSTORE operation when the storage value’s zeroness
+       %% remains unchanged or is set to zero.
+     , 'GSRESET' => 5000
+
+       %% Refund given (added into refund counter) when the storage value is
+       %% set to zero from non-zero.
+     , 'RSCLEAR' => 15000
+
+       %% Refund given (added into refund counter) for self-destructing an
+       %% account.
+     , 'RSELFDESTRUCT' => 24000
+
+       %% Amount of gas to pay for a SELFDESTRUCT operation.
+     , 'GSELFDESTRUCT' => 5000
+
+       %% From the go implementation
+       %% , 'GSUICIDE' => 0
+
+       %% Paid for a CREATE operation.
+     , 'GCREATE' => 32000
+
+       %% Paid per byte for a CREATE operation to succeed in placing code
+       %% into state.
+     , 'GCODEDEPOSIT' => 200
+
+       %% Paid for a CALL operation.
+     , 'GCALL' => 40 %% From the go implementation. 700 from the yellowpaper
+
+       %% Paid for a non-zero value transfer as part of the CALL operation.
+     , 'GCALLVALUE' => 9000
+
+       %% A stipend for the called contract subtracted from Gcallvalue for a
+       %% non-zero value transfer.
+     , 'GCALLSTIPEND' => 2300
+
+       %% Paid for a CALL or SELFDESTRUCT operation which creates an account.
+     , 'GNEWACCOUNT' => 25000
+
+       %% Partial payment for an EXP operation.
+     , 'GEXP' => 10
+
+       %% Partial payment when multiplied by dlog256(exponent)e for the EXP
+       %% operation.
+     , 'GEXPBYTE' => 10 %% From the go implementation. 50 from the yellowpages
+
+       %% Paid for every additional word when expanding memory.
+     , 'GMEMORY' => 3
+
+       %% Paid by all contract-creating transactions after the Homestead
+       %% transition.
+     , 'GTXCREATE' => 32000
+
+       %% Paid for every zero byte of data or code for a transaction.
+     , 'GTXDATAZERO' => 4
+
+       %% Paid for every non-zero byte of data or code for a transaction.
+     , 'GTXDATANONZERO' => 68
+
+       %% Paid for every transaction.
+     , 'GTRANSACTION' => 21000
+
+       %% Partial payment for a LOG operation.
+     , 'GLOG' => 375
+
+       %% Paid for each byte in a LOG operation’s data.
+     , 'GLOGDATA' => 8
+
+       %% Paid for each topic of a LOG operation.
+     , 'GLOGTOPIC' => 375
+
+       %% Paid for each SHA3 operation.
+     , 'GSHA3' => 30
+
+       %% Paid for each word (rounded up) for input data to a SHA3 operation.
+     , 'GSHA3WORD' => 6
+
+       %% Partial payment for *COPY operations, multiplied by words copied,
+       %% rounded up.
+     , 'GCOPY' => 3
+
+       %% Payment for BLOCKHASH operation.
+     , 'GBLOCKHASH' => 20
+
+     }.
