@@ -88,12 +88,11 @@ gas(Config) ->
 
     InitialBalance = balance(N1),
 
-    %% do we have covernance for contract create tx and contract call tx?
-    TxsPerMB = 300,
+    TxsPerMB = 360,
     ct:log("We can put ~p Txs in a micro block\n", [TxsPerMB]),
 
     Code     = compile_contract("contracts/spend_20_test.aes"),
-    CallData = aect_sophia:create_call(Code, <<"init">>, <<"()">>),
+    {ok, CallData} = aect_sophia:encode_call_data(Code, <<"init">>, <<"()">>),
     ct:log("InitData ~p\n", [CallData]),
 
     %% Add a bunch of transactions...
@@ -104,24 +103,24 @@ gas(Config) ->
     ct:log("Contract Init call ~p", [InitCall]),
 
     CostCreate = InitialBalance - balance(N1),
-    ct:log("Paid for create gas: ~p", [CostCreate - 1]), %% fee is always 1
+    ct:log("Paid for create gas: ~p", [CostCreate]),
 
-    Txs0 = [TxHash | add_spend_txs(N1, <<"good stuff">>, 1,  2) ],  %% We can add some Txs, need to wait contract on chain
+    Txs0 = [TxHash | add_spend_txs(N1, <<"good stuff">>, 360,  2) ],  %% We can add some Txs, need to wait contract on chain
     {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [lists:last(Txs0)], 5),
     CostSpend = InitialBalance - CostCreate - balance(N1),
-    ct:log("Paid for spend tx gas: ~p", [CostSpend - 1 - 10]), %% fee is always 1, we spend 10
+    ct:log("Paid for spend tx gas: ~p", [CostSpend ]),
 
-    CallData2 = aect_sophia:create_call(ContractId, <<"spend">>, <<"100">>),
+    {ok, CallData2} = aect_sophia:encode_call_data(Code, <<"spend">>, <<"100">>),
     ct:log("CallData ~p\n", [CallData2]),
 
-    Txs2 = add_call_contract_txs(N1, ContractId, CallData2, 1, length(Txs0) + 1),
+    Txs2 = add_call_contract_txs(N1, ContractId, CallData2, 6, length(Txs0) + 1),
     ExpectedMBs2 = (length(Txs2) div TxsPerMB) + 1,
     ct:log("filled pool with ~p call contracts\n", [length(Txs2)]),
 
-    {ok, Blocks} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [lists:last(Txs2)], round(ExpectedMBs2 * 1.2) + 2),
+    {ok, Blocks} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [lists:last(Txs2)], 4),
 
-    CostCall = InitialBalance - CostCreate - CostSpend - balance(N1) + 20*100,
-    ct:log("Paid for call gas: ~p", [CostCall - 1]),
+    CostCall = InitialBalance - CostCreate - CostSpend - balance(N1),
+    ct:log("Paid for call gas: ~p", [CostCall]),
 
     ct:log("Contract Info ~p", [get_contract_object(N1, ContractId)]),
 
@@ -146,7 +145,7 @@ gas(Config) ->
 
 
 contract_object(Node, EncodedTxHash) ->
-    {ok, Tx0Hash} = aec_base58c:safe_decode(tx_hash, EncodedTxHash),
+    {ok, Tx0Hash} = aehttp_api_encoder:safe_decode(tx_hash, EncodedTxHash),
     {BlockHash, STx} = rpc:call(Node, aec_chain, find_tx_with_location, [Tx0Hash]),
     {CB, CTx} = aetx:specialize_callback(aetx_sign:tx(STx)),
     Contract  = CB:contract_pubkey(CTx),
@@ -188,11 +187,11 @@ add_spend_tx(Node, Payload, Nonce, Sender, Recipient) ->
                 nonce        => Nonce,
                 ttl          => 10000,
                 payload      => Payload,
-                fee          => 1 },
+                fee          => 17000 },
     {ok, Tx} = aec_spend_tx:new(Params),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
     ok = rpc:call(Node, aec_tx_pool, push, [STx]),
-    aec_base58c:encode(tx_hash, aetx_sign:hash(STx)).
+    aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(STx)).
 
 
 add_create_contract_txs(Node, Code, CallData, N, NonceStart) ->
@@ -202,7 +201,7 @@ add_call_contract_txs(Node, ContractId, CallData, N, NonceStart) ->
     [call_contract_tx(Node, ContractId, CallData, Nonce) || Nonce <- lists:seq(NonceStart, NonceStart + N - 1) ]. 
 
 contract_gas() ->
-    4000000.
+    400000.
 
 get_contract_object(Node, Contract) ->
     {ok, Info} = rpc:call(Node, aec_chain, get_contract, [Contract]),
@@ -216,10 +215,10 @@ create_contract_tx(Node, Code, CallData, Nonce) ->
                                          , vm_version => 1
                                          , code       => Code
                                          , call_data  => CallData
-                                         , fee        => 1
+                                         , fee        => 200000
                                          , deposit    => 9876
                                          , amount     => 100000
-                                         , gas        => 500      %% 482 just now
+                                         , gas        => 500      %% 178 just now
                                          , owner_id   => Owner
                                          , gas_price  => 1
                                          , ttl        => 10000
@@ -227,7 +226,7 @@ create_contract_tx(Node, Code, CallData, Nonce) ->
     CTx = aec_test_utils:sign_tx(CreateTx, maps:get(privkey, patron())),
     ok = rpc:call(Node, aec_tx_pool, push, [CTx]),
     ContractKey = aect_contracts:compute_contract_pubkey(OwnerKey, Nonce),
-    {aec_base58c:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey}.
+    {aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey}.
 
 compile_contract(File) ->
     CodeDir = code:lib_dir(aesophia, test),
@@ -243,7 +242,7 @@ call_contract_tx(Node, Contract, CallData, Nonce) ->
                                      , caller_id   => Caller
                                      , vm_version  => 1
                                      , contract_id => ContractID
-                                     , fee         => 1
+                                     , fee         => 500000
                                      , amount      => 0
                                      , gas         => contract_gas()    %% 186527 for 20
                                      , gas_price   => 1
@@ -252,7 +251,7 @@ call_contract_tx(Node, Contract, CallData, Nonce) ->
                                      }),
     CTx = aec_test_utils:sign_tx(CallTx, maps:get(privkey, patron())),
     ok = rpc:call(Node, aec_tx_pool, push, [CTx]),
-    aec_base58c:encode(tx_hash, aetx_sign:hash(CTx)).
+    aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)).
 
 
 new_pubkey() ->
