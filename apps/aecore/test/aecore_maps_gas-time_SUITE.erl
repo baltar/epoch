@@ -88,21 +88,27 @@ gas(Config) ->
 
     InitialBalance = balance(N1),
 
+    CodeRemote     = compile_contract("contracts/remotetimes_test.aes"),
+    ct:log("CodeRemote = ~p", [CodeRemote]),
+    {ok, CallDataRem} = aect_sophia:encode_call_data(CodeRemote, <<"init">>, <<"()">>),
+    {TxHashRem, ContractIdRem} = create_contract_tx(N1, CodeRemote, CallDataRem, 1),
+
+    <<IdRem : 256>> = ContractIdRem,
     Code     = compile_contract("contracts/maptimes_test.aes"),
     ct:log("Code = ~p", [Code]),
-    {ok, CallData} = aect_sophia:encode_call_data(Code, <<"init">>, <<"()">>),
+    {ok, CallData} = aect_sophia:encode_call_data(Code, <<"init">>, integer_to_binary(IdRem)),
     ct:log("InitData ~p\n", [CallData]),
-    {TxHash, ContractId} = create_contract_tx(N1, Code, CallData, 1),
-    Txs0 = [TxHash],
-    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [TxHash], 2),
+    {TxHash, ContractId} = create_contract_tx(N1, Code, CallData, 2),
+    ct:log("Waiting for tx: ~p", [TxHash]),
+    Txs0 = [TxHash, TxHashRem],
+    {ok, _} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, Txs0, 2),
 
-    ct:log("Contract Info ~p", [get_contract_object(N1, ContractId)]),
+    ct:log("Contract Info ~p\n ~p", [get_contract_object(N1, ContractId), get_contract_object(N1, ContractIdRem)]),
     InitCall = contract_object(N1, TxHash),       
     ct:log("Contract Init call ~p", [InitCall]),
 
     CostCreate = InitialBalance - balance(N1),
-    %% gas in contract * gas_price + fee + amount + (missing base gas cost)
-    ct:log("Paid for create: ~p (should be ~p)", [CostCreate, 2*480 + 1000 + 1]),
+    ct:log("Paid for create: ~p", [CostCreate]),
 
     R1 = add_create_contract_txs(N1, Code, CallData, 100, length(Txs0) + 1),
     {Txs1, Contracts} = lists:unzip(R1),
@@ -112,7 +118,7 @@ gas(Config) ->
     ct:log("CallData ~p\n", [CallData2]),
 
     BeforeCall = balance(N1),
-    Txs2 = add_call_contract_txs(N1, ContractId, CallData2, 1000000, 50, length(Txs0) + length(Txs1) + 1),
+    Txs2 = add_call_contract_txs(N1, ContractId, CallData2, 10000, 50, length(Txs0) + length(Txs1) + 1),
     ct:log("filled pool with ~p call contracts\n", [length(Txs2)]),
 
     {ok, Blocks} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [lists:last(Txs2)], 4),
@@ -123,8 +129,27 @@ gas(Config) ->
     ct:log("Contract Info ~p", [get_contract_object(N1, ContractId)]),
 
     CallResults = [ contract_object(N1, Tx) || Tx <- Txs2 ],
-    Hash = rpc:call(N1, aec_chain, top_block_hash, []),
     ct:log("Contract Calls ~p", [CallResults]),
+
+
+
+    {ok, CallData3} = aect_sophia:encode_call_data(Code, <<"f_loop">>, <<"20">>),
+    ct:log("CallData f_loop ~p\n", [CallData3]),
+
+    BeforeCall2 = balance(N1),
+    Txs3 = add_call_contract_txs(N1, ContractId, CallData3, 10000, 50, length(Txs0) + length(Txs1) + length(Txs2) + 1),
+    ct:log("filled pool with ~p call contracts\n", [length(Txs3)]),
+
+    {ok, Blocks2} = aecore_suite_utils:mine_blocks_until_txs_on_chain(N1, [lists:last(Txs3)], 4),
+
+    CostCall2 = BeforeCall2 - balance(N1),
+    ct:log("Paid for call gas: ~p", [CostCall2]),
+
+    ct:log("Contract Info ~p", [get_contract_object(N1, ContractId)]),
+
+    CallResults2 = [ contract_object(N1, Tx) || Tx <- Txs3 ],
+    ct:log("Contract Calls ~p", [CallResults2]),
+
 
     ct:log("Explored ~p", [explorer(N1, 0)]),
 
@@ -143,7 +168,7 @@ gas(Config) ->
 
 
 contract_object(Node, EncodedTxHash) ->
-    {ok, Tx0Hash} = aec_base58c:safe_decode(tx_hash, EncodedTxHash),
+    {ok, Tx0Hash} = aehttp_api_encoder:safe_decode(tx_hash, EncodedTxHash),
     {BlockHash, STx} = rpc:call(Node, aec_chain, find_tx_with_location, [Tx0Hash]),
     {CB, CTx} = aetx:specialize_callback(aetx_sign:tx(STx)),
     Contract  = CB:contract_pubkey(CTx),
@@ -184,7 +209,7 @@ add_spend_tx(Node, Payload, Nonce, Sender, Recipient) ->
     io:format("gas for spend_tx: ~p\n", [aetx:gas(Tx)]),
     STx = aec_test_utils:sign_tx(Tx, maps:get(privkey, Sender)),
     ok = rpc:call(Node, aec_tx_pool, push, [STx]),
-    aec_base58c:encode(tx_hash, aetx_sign:hash(STx)).
+    aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(STx)).
 
 
 add_create_contract_txs(Node, Code, CallData, N, NonceStart) ->
@@ -205,7 +230,7 @@ create_contract_tx(Node, Code, CallData, Nonce) ->
                                          , vm_version => 1
                                          , code       => Code
                                          , call_data  => CallData
-                                         , fee        => 1
+                                         , fee        => 150000
                                          , deposit    => 0
                                          , amount     => 1000
                                          , gas        => 2000      %% 482 just now
@@ -217,7 +242,7 @@ create_contract_tx(Node, Code, CallData, Nonce) ->
     CTx = aec_test_utils:sign_tx(CreateTx, maps:get(privkey, patron())),
     ok = rpc:call(Node, aec_tx_pool, push, [CTx]),
     ContractKey = aect_contracts:compute_contract_pubkey(OwnerKey, Nonce),
-    {aec_base58c:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey}.
+    {aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)), ContractKey}.
 
 compile_contract(File) ->
     CodeDir = code:lib_dir(aesophia, test),
@@ -233,17 +258,17 @@ call_contract_tx(Node, Contract, CallData, Gas, Nonce) ->
                                      , caller_id   => Caller
                                      , vm_version  => 1
                                      , contract_id => ContractID
-                                     , fee         => 1
+                                     , fee         => 500000
                                      , amount      => 0
                                      , gas         => Gas
-                                     , gas_price   => 2
+                                     , gas_price   => 1
                                      , call_data   => CallData
                                      , ttl         => 10000
                                      }),
     io:format("gas for call_tx: ~p", [aetx:gas(CallTx)]),
     CTx = aec_test_utils:sign_tx(CallTx, maps:get(privkey, patron())),
     ok = rpc:call(Node, aec_tx_pool, push, [CTx]),
-    aec_base58c:encode(tx_hash, aetx_sign:hash(CTx)).
+   aehttp_api_encoder:encode(tx_hash, aetx_sign:hash(CTx)).
 
 
 new_pubkey() ->
