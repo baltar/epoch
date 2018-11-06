@@ -1,0 +1,2 @@
+contract Remote =
+   function f() = ()

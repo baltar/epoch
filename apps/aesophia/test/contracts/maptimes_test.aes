@@ -1,7 +1,10 @@
-
+contract Remote =
+   function f : () =>  ()
+        
 contract MapTimes =
 
-  record state = { map : map(int, int) }
+  record state = { map : map(int, int),
+                   remote : Remote }
 
   public stateful function put_loop(n : int) =
     if (n==0)
@@ -10,5 +13,12 @@ contract MapTimes =
        state.map{ [n] = n }
        put_loop(n-1)
 
-  function init() =
-      { map = {} }
+  function f_loop(n : int) =
+    if (n==0)
+       ()
+    else
+       state.remote.f()
+       f_loop(n-1)
+        
+  function init(r) =
+      { map = {}, remote = r }
