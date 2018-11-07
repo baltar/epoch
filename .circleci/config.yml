@@ -289,6 +289,11 @@ references:
         dmesg > ${SYSTEM_TEST_HOST_LOGS_DIR:?}/dmesg.log
       when: always
 
+  setup_secrets: &setup_secrets
+    run:
+      name: Setup Secrets
+      command: echo "source /infrastructure/import-secrets.sh" >> $BASH_ENV
+
 jobs:
   build:
     <<: *container_config
@@ -520,6 +525,7 @@ jobs:
   uat_chain_snapshot:
     <<: *infrastructure_config
     steps:
+      - *setup_secrets
       - run:
           name: Snapshot of UAT blockchain
           environment:
@@ -628,20 +634,22 @@ jobs:
     steps: *deploy_steps
 
   upload_packages_osx:
-    <<: *container_config
+    <<: *infrastructure_config
     steps:
       - checkout
       - attach_workspace:
           at: *packages_workspace
+      - *setup_secrets
       - *upload_github_release_asset
 
   upload_packages_linux:
-    <<: *container_config
+    <<: *infrastructure_config
     steps:
       - checkout
       - *set_package_path
       - attach_workspace:
           at: *packages_workspace
+      - *setup_secrets
       - *upload_github_release_asset
       - *upload_release_artifacts
 
