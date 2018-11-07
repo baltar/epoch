@@ -11,13 +11,14 @@ references:
       # Official docker versions: https://download.docker.com/linux/static/stable/x86_64/
       DOCKER_CLIENT_VERSION: "17.09.0-ce"
       DOCKERHUB_REPO: aeternity/epoch
-      S3_BUILDS_BUCKET: aeternity-epoch-builds
-      S3_RELEASES_BUCKET: aeternity-epoch-releases
 
   infrastructure_config: &infrastructure_config
     docker:
       - image: aeternity/infrastructure
     working_directory: ~/epoch
+    environment:
+      S3_BUILDS_BUCKET: aeternity-epoch-builds
+      S3_RELEASES_BUCKET: aeternity-epoch-releases
 
   machine_config: &machine_config
     machine:
@@ -148,14 +149,6 @@ references:
       path: *packages_workspace
       destination: /
 
-  upload_build_artifacts: &upload_build_artifacts
-    run:
-      name: Upload build artifacts to central repository (AWS)
-      command: |
-        aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
-        if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "160452961_csm_integration" ]; then
-          aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/epoch-latest-test-${PKG_SUFFIX:?}.tar.gz
-        fi
   upload_release_artifacts: &upload_release_artifacts
     run:
       name: Upload release artifacts to central repository (AWS)
@@ -410,11 +403,26 @@ jobs:
       - store_artifacts:
           path: /tmp/package_tests/node3/log
       - *store_package_artifacts
-      - *upload_build_artifacts
       - persist_to_workspace:
           root: *packages_workspace
           paths:
             - "*.tar.gz"
+      - *fail_notification
+
+  upload_build_artifacts:
+    <<: *infrastructure_config
+    steps:
+      - *set_package_path
+      - *setup_secrets
+      - attach_workspace:
+          at: *packages_workspace
+      - run:
+          name: Upload build artifacts to central repository (AWS)
+          command: |
+            aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
+            if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "160452961_csm_integration" ]; then
+              aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/epoch-latest-test-${PKG_SUFFIX:?}.tar.gz
+            fi
       - *fail_notification
 
   deploy_api_docs:
@@ -761,6 +769,13 @@ workflows:
               only: /^v.*$/
 
       - linux_package:
+          filters:
+            tags:
+              only: /^v.*$/
+
+      - upload_build_artifacts:
+          requires:
+            - linux_package
           filters:
             tags:
               only: /^v.*$/
