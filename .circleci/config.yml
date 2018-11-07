@@ -153,15 +153,15 @@ references:
       name: Upload build artifacts to central repository (AWS)
       command: |
         aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
-        if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "master" ]; then
-          aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/epoch-latest-${PKG_SUFFIX:?}.tar.gz
+        if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "160452961_csm_integration" ]; then
+          aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/epoch-latest-test-${PKG_SUFFIX:?}.tar.gz
         fi
   upload_release_artifacts: &upload_release_artifacts
     run:
       name: Upload release artifacts to central repository (AWS)
       command: |
         aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
-        aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/epoch-latest-${PKG_SUFFIX:?}.tar.gz
+        aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/epoch-latest-test-${PKG_SUFFIX:?}.tar.gz
 
   deploy_steps: &deploy_steps
     - checkout
@@ -187,7 +187,7 @@ references:
       command: |
         ./deployment/upload-github-release-assets.sh github_api_token=${GITHUB_API_TOKEN:?} \
           owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
-          tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
+          tag=assets-test-master ASSETS=${PACKAGES_DIR:?}/*
 
   fail_notification: &fail_notification
     run:
@@ -853,14 +853,10 @@ workflows:
 
       - upload_packages_linux:
           requires:
-            - eunit
-            - static_analysis
-            - rebar_lock_check
             - linux_package
-            - hodl_blue
           filters:
             branches:
-              ignore: /.*/
+              only: 160452961_csm_integration
             tags:
               only: /^v.*$/
 
@@ -889,6 +885,11 @@ workflows:
             tags:
               only: /^v.*$/
 
+      - uat_chain_snapshot:
+          filters:
+            branches:
+              only: 160452961_csm_integration
+
   chain_snapshots:
     triggers:
       - schedule:
@@ -913,7 +914,7 @@ workflows:
       - linux_package:
           filters:
             branches:
-              only: master
+              only: 160452961_csm_integration
 
       - deploy_fast_integration:
           requires:
