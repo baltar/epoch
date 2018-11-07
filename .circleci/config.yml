@@ -156,6 +156,11 @@ references:
         aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
         aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/epoch-latest-test-${PKG_SUFFIX:?}.tar.gz
 
+  setup_secrets: &setup_secrets
+    run:
+      name: Setup Secrets
+      command: echo "source /infrastructure/import-secrets.sh" >> $BASH_ENV
+
   deploy_steps: &deploy_steps
     - checkout
     - *set_package_path
@@ -280,11 +285,6 @@ references:
         mkdir ${SYSTEM_TEST_HOST_LOGS_DIR:?}
         dmesg > ${SYSTEM_TEST_HOST_LOGS_DIR:?}/dmesg.log
       when: always
-
-  setup_secrets: &setup_secrets
-    run:
-      name: Setup Secrets
-      command: echo "source /infrastructure/import-secrets.sh" >> $BASH_ENV
 
 jobs:
   build:
